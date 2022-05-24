@@ -84,3 +84,6 @@
 	path = litex-inst/pythondata-cpu-vexriscv-smp
 	url = https://github.com/litex-hub/pythondata-cpu-vexriscv-smp.git
 	branch = 2020.08
+[submodule "ext_lib/tinycrypt"]
+	path = ext_lib/tinycrypt
+	url = git@github.com:intel/tinycrypt.git
