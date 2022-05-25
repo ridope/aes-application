@@ -1,8 +1,0 @@
-{
-    "files.associations": {
-        "main.h": "c",
-        "tests_aes.h": "c",
-        "constants.h": "c",
-        "aes.h": "c"
-    }
-}
