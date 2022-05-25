@@ -11,6 +11,8 @@
 #include <libbase/console.h>
 #include <generated/csr.h>
 
-#include <tests_aes.h>
+#include <tinycrypt/aes.h>
+#include <tinycrypt/constants.h>
+#include <test_utils.h>
 
 #endif
