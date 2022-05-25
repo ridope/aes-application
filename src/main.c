@@ -195,12 +195,57 @@ static void encrypts(void)
 	}
 
 	printf("\n");
-	
+
 }
 
 static void decrypts(void)
 {
-	ctrl_reset_write(1);
+	char *str;
+	char *key;
+	char *text;
+
+	uint8_t nist_key[NUM_OF_NIST_KEYS];
+	uint8_t ciphertext[NUM_OF_NIST_KEYS];
+	uint8_t text_out[NUM_OF_NIST_KEYS];
+
+	printf("\e[94;1mInsert the key\e[0m> ");
+	do 
+	{
+		str = readstr();
+	}while(str == NULL);
+
+	key = get_token(&str);
+
+	if (get_hex_rep(key, &nist_key[0]) == 0){
+		printf("\e[91;1mError converting the encryption key\e[0m\n");
+		return;
+	}
+
+	printf("\e[94;1mInsert the chipertext\e[0m> ");
+	do 
+	{
+		str = readstr();
+	}while(str == NULL);
+
+	text = get_token(&str);
+
+	if (get_hex_rep(text, &ciphertext[0]) == 0){
+		printf("\e[91;1mError converting the ciphertext\e[0m\n");
+		return;
+	}
+
+	struct tc_aes_key_sched_struct s;
+
+	if (tc_aes128_set_decrypt_key(&s, nist_key) == 0){
+		printf("\e[91;1mError setting the decryption key\e[0m\n");
+	}
+
+	if (tc_aes_decrypt(text_out, ciphertext, &s) == 0){
+		printf("\e[91;1mError in the text decryption\e[0m\n");
+	}
+	
+	printf("\e[94;1mText: \e[0m");
+	printf("%s\n", text_out);
 }
 
 
