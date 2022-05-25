@@ -132,6 +132,8 @@ static uint8_t str_to_aes_block(char *str_text, uint8_t *text_block)
 		return 0;
 	}
 
+	memset(text_block, 0, NUM_OF_NIST_KEYS);
+
 	if(snprintf((char *)text_block, NUM_OF_NIST_KEYS, "%s", str_text) < 0){
 		printf("\e[91;1mEncoding error\e[0m\n");
 		return 0;
