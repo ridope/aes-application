@@ -1,6 +1,7 @@
 #include "main.h"
 
-#define NUM_OF_NIST_KEYS 16
+
+uint8_t ctr[TC_AES_BLOCK_SIZE];
 
 /*-----------------------------------------------------------------------*/
 /* Uart                                                                  */
@@ -101,7 +102,7 @@ static uint8_t get_hex_rep(char *str_key, uint8_t *hex_key)
 	char temp_str[3];
 	temp_str[2] = '\0';
 
-	for(int i = 0; i < 2*NUM_OF_NIST_KEYS; i+=2)
+	for(int i = 0; i < 2*TC_AES_BLOCK_SIZE; i+=2)
 	{
 		if(str_key[i]==0 || str_key[i+1]==0)
 		{
@@ -116,7 +117,7 @@ static uint8_t get_hex_rep(char *str_key, uint8_t *hex_key)
 		key_size++;
 	}
 
-	if(key_size != NUM_OF_NIST_KEYS){
+	if(key_size != TC_AES_BLOCK_SIZE){
 		printf("\e[91;1mKey size: %d\e[0m\n", key_size);
 		return 0;
 	}
@@ -132,9 +133,9 @@ static uint8_t str_to_aes_block(char *str_text, uint8_t *text_block)
 		return 0;
 	}
 
-	memset(text_block, 0, NUM_OF_NIST_KEYS);
+	memset(text_block, 0, TC_AES_BLOCK_SIZE);
 
-	if(snprintf((char *)text_block, NUM_OF_NIST_KEYS, "%s", str_text) < 0){
+	if(snprintf((char *)text_block, TC_AES_BLOCK_SIZE, "%s", str_text) < 0){
 		printf("\e[91;1mEncoding error\e[0m\n");
 		return 0;
 	}
@@ -142,15 +143,13 @@ static uint8_t str_to_aes_block(char *str_text, uint8_t *text_block)
 	return 1;
 }
 
-static void encrypts(void)
+static void encrypts(uint8_t *counter, uint8_t len_counter)
 {	
 	char *str;
 	char *key;
 	char *text;
 
-	uint8_t nist_key[NUM_OF_NIST_KEYS];
-	uint8_t ciphertext[NUM_OF_NIST_KEYS];
-	uint8_t text_in[NUM_OF_NIST_KEYS];
+	uint8_t nist_key[TC_AES_BLOCK_SIZE];
 
 	printf("\e[94;1mInsert the key\e[0m> ");
 	do 
@@ -173,10 +172,8 @@ static void encrypts(void)
 
 	text = get_token(&str);
 
-	if (str_to_aes_block(text, &text_in[0]) == 0){
-		printf("\e[91;1mError creating the text block\e[0m\n");
-		return;
-	}
+	uint8_t chiper_size = TC_AES_BLOCK_SIZE+strlen(text);
+	uint8_t *ciphertext = malloc(chiper_size);
 
 	struct tc_aes_key_sched_struct s;
 
@@ -184,12 +181,14 @@ static void encrypts(void)
 		printf("\e[91;1mError setting the encryption key\e[0m\n");
 	}
 
-	if (tc_aes_encrypt(ciphertext, text_in, &s) == 0){
-		printf("\e[91;1mError in the text encryption\e[0m\n");
-	}
+	(void)memcpy(ciphertext, counter, len_counter);
 	
+	if (tc_ctr_mode(&ciphertext[TC_AES_BLOCK_SIZE], strlen(text), (uint8_t *) text, strlen(text), counter, &s) == 0) {
+			printf("\e[91;1mError in the text encryption\e[0m\n");
+	}
+
 	printf("\e[94;1mChiper text: \e[0m");
-	for(int i=0; i < NUM_OF_NIST_KEYS; i++)
+	for(int i=0; i < chiper_size; i++)
 	{
 		printf("%02x", ciphertext[i]);
 	}
@@ -204,9 +203,9 @@ static void decrypts(void)
 	char *key;
 	char *text;
 
-	uint8_t nist_key[NUM_OF_NIST_KEYS];
-	uint8_t ciphertext[NUM_OF_NIST_KEYS];
-	uint8_t text_out[NUM_OF_NIST_KEYS];
+	uint8_t nist_key[TC_AES_BLOCK_SIZE];
+	uint8_t ciphertext[TC_AES_BLOCK_SIZE];
+	uint8_t text_out[TC_AES_BLOCK_SIZE];
 
 	printf("\e[94;1mInsert the key\e[0m> ");
 	do 
@@ -267,7 +266,7 @@ static void console_service(void)
 		reboot_cmd();
 
 	else if(strcmp(token, "encrypt") == 0)
-		encrypts();
+		encrypts(ctr, TC_AES_BLOCK_SIZE);
 	
 	else if(strcmp(token, "decrypt") == 0)
 		decrypts();
@@ -286,6 +285,13 @@ int main(void)
 
 	help();
 	prompt();
+
+
+	/* Generating Counter init */
+	for(int i=0; i< TC_AES_BLOCK_SIZE; i++)
+	{
+		ctr[i] = rand() % 255;
+	}
 
 	while(1) {
 		console_service();
