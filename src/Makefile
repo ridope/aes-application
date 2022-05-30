@@ -10,6 +10,7 @@ EXT_LIBDIR = ../ext_lib
 TINY_CRYPT_OBJ := $(OBJDIR)/aes_decrypt.o \
 				$(OBJDIR)/aes_encrypt.o \
 				$(OBJDIR)/ctr_mode.o \
+				$(OBJDIR)/ctr_prng.o \
 				$(OBJDIR)/utils.o 
 
 OBJECTS := $(TINY_CRYPT_OBJ) \

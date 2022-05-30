@@ -300,7 +300,6 @@ int main(void)
 	help();
 	prompt();
 
-
 	/* Generating Counter init */
 	for(int i=0; i< TC_AES_BLOCK_SIZE; i++)
 	{
