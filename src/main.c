@@ -89,60 +89,51 @@ static void reboot_cmd(void)
 	ctrl_reset_write(1);
 }
 
-static uint8_t get_hex_rep(char *str_key, uint8_t *hex_key)
+/**
+ * @brief Get the hex representation of the input string
+ * 
+ * @param str_input 	String input
+ * @param in_size 	Input size
+ * @param hex_out 	Output hex representation
+ * @return uint8_t 	The bytes written in the output
+ */
+static uint8_t get_hex_rep(char *str_input, uint8_t in_size, uint8_t *hex_out)
 {	
-	if(str_key == NULL || hex_key == NULL)
+	if(str_input == NULL || hex_out == NULL)
 	{
 		printf("\e[91;1mNull pointers\e[0m\n");
 		return 0;
 	}
 
-	int key_size = 0;
+	int out_size = 0;
 
 	char temp_str[3];
 	temp_str[2] = '\0';
 
-	for(int i = 0; i < 2*TC_AES_BLOCK_SIZE; i+=2)
+	for(int i = 0; i < in_size; i+=2)
 	{
-		if(str_key[i]==0 || str_key[i+1]==0)
+		if(str_input[i]==0 || str_input[i+1]==0)
 		{
 			break;
 		}
 
-		temp_str[0] = str_key[i];
-		temp_str[1] = str_key[i+1];
+		temp_str[0] = str_input[i];
+		temp_str[1] = str_input[i+1];
 
-		hex_key[key_size] = strtol(&temp_str[0],NULL,16);
+		hex_out[out_size] = strtol(&temp_str[0],NULL,16);
 
-		key_size++;
+		out_size++;
 	}
 
-	if(key_size != TC_AES_BLOCK_SIZE){
-		printf("\e[91;1mKey size: %d\e[0m\n", key_size);
-		return 0;
-	}
-
-	return 1;
+	return out_size;
 }
 
-static uint8_t str_to_aes_block(char *str_text, uint8_t *text_block)
-{
-	if(str_text == NULL || text_block == NULL)
-	{
-		printf("\e[91;1mNull pointers\e[0m\n");
-		return 0;
-	}
-
-	memset(text_block, 0, TC_AES_BLOCK_SIZE);
-
-	if(snprintf((char *)text_block, TC_AES_BLOCK_SIZE, "%s", str_text) < 0){
-		printf("\e[91;1mEncoding error\e[0m\n");
-		return 0;
-	}
-
-	return 1;
-}
-
+/**
+ * @brief Encryption top function
+ * 
+ * @param counter 		The pointer for the counter
+ * @param len_counter 	The size of the counter
+ */
 static void encrypts(uint8_t *counter, uint8_t len_counter)
 {	
 	char *str;
@@ -151,6 +142,7 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 
 	uint8_t nist_key[TC_AES_BLOCK_SIZE];
 
+	/* Reading key and text for encryption */
 	printf("\e[94;1mInsert the key\e[0m> ");
 	do 
 	{
@@ -159,7 +151,7 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 
 	key = get_token(&str);
 
-	if (get_hex_rep(key, &nist_key[0]) == 0){
+	if (get_hex_rep(key, strlen(key), &nist_key[0]) != TC_AES_KEY_SIZE){
 		printf("\e[91;1mError converting the encryption key\e[0m\n");
 		return;
 	}
@@ -172,6 +164,7 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 
 	text = get_token(&str);
 
+	/* Setting encryption configs */
 	uint8_t chiper_size = TC_AES_BLOCK_SIZE+strlen(text);
 	uint8_t *ciphertext = malloc(chiper_size);
 
@@ -183,10 +176,12 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 
 	(void)memcpy(ciphertext, counter, len_counter);
 	
+	/* Encryption phase */
 	if (tc_ctr_mode(&ciphertext[TC_AES_BLOCK_SIZE], strlen(text), (uint8_t *) text, strlen(text), counter, &s) == 0) {
 			printf("\e[91;1mError in the text encryption\e[0m\n");
 	}
 
+	/* Displaying */
 	printf("\e[94;1mChiper text: \e[0m");
 	for(int i=0; i < chiper_size; i++)
 	{
@@ -197,6 +192,10 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 
 }
 
+/**
+ * @brief Decryption top function
+ * 
+ */
 static void decrypts(void)
 {
 	char *str;
@@ -204,9 +203,8 @@ static void decrypts(void)
 	char *text;
 
 	uint8_t nist_key[TC_AES_BLOCK_SIZE];
-	uint8_t ciphertext[TC_AES_BLOCK_SIZE];
-	uint8_t text_out[TC_AES_BLOCK_SIZE];
-
+	
+	/* Reading key and text for decryption */
 	printf("\e[94;1mInsert the key\e[0m> ");
 	do 
 	{
@@ -215,7 +213,7 @@ static void decrypts(void)
 
 	key = get_token(&str);
 
-	if (get_hex_rep(key, &nist_key[0]) == 0){
+	if (get_hex_rep(key, strlen(key), &nist_key[0]) == 0){
 		printf("\e[91;1mError converting the encryption key\e[0m\n");
 		return;
 	}
@@ -228,7 +226,16 @@ static void decrypts(void)
 
 	text = get_token(&str);
 
-	if (get_hex_rep(text, &ciphertext[0]) == 0){
+	/* Setting decryption configs */
+	uint8_t input_len = strlen(text);
+	uint8_t cipher_len = input_len/2;
+
+	uint8_t data_len = cipher_len-TC_AES_BLOCK_SIZE;
+
+	uint8_t *ciphertext = malloc(cipher_len);
+	uint8_t *text_out = malloc(data_len);
+
+	if (get_hex_rep(text, strlen(text), ciphertext) == 0){
 		printf("\e[91;1mError converting the ciphertext\e[0m\n");
 		return;
 	}
@@ -239,10 +246,17 @@ static void decrypts(void)
 		printf("\e[91;1mError setting the decryption key\e[0m\n");
 	}
 
-	if (tc_aes_decrypt(text_out, ciphertext, &s) == 0){
-		printf("\e[91;1mError in the text decryption\e[0m\n");
-	}
+	uint8_t temp_counter[TC_AES_BLOCK_SIZE];
+
+	(void)memcpy(temp_counter, ciphertext, TC_AES_BLOCK_SIZE);
 	
+	/* Decryption phase */
+	if (tc_ctr_mode(text_out, data_len, &ciphertext[TC_AES_BLOCK_SIZE], data_len, &temp_counter[0], &s) == 0) {
+			printf("\e[91;1mError in the text encryption\e[0m\n");
+	}
+
+	text_out[data_len] = '\0';
+
 	printf("\e[94;1mText: \e[0m");
 	printf("%s\n", text_out);
 }
