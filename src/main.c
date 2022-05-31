@@ -1,7 +1,9 @@
 #include "main.h"
 
 
-uint8_t ctr[TC_AES_BLOCK_SIZE];
+#define MAC_LEN 	16
+#define NONCE_SIZE  13
+uint8_t nonce[NONCE_SIZE];
 
 /*-----------------------------------------------------------------------*/
 /* Uart                                                                  */
@@ -134,7 +136,7 @@ static uint8_t get_hex_rep(char *str_input, uint8_t in_size, uint8_t *hex_out)
  * @param counter 		The pointer for the counter
  * @param len_counter 	The size of the counter
  */
-static void encrypts(uint8_t *counter, uint8_t len_counter)
+static void encrypts(uint8_t *nonce, size_t nlen)
 {	
 	char *str;
 	char *key;
@@ -165,25 +167,34 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
 	text = get_token(&str);
 
 	/* Setting encryption configs */
-	uint8_t chiper_size = TC_AES_BLOCK_SIZE+strlen(text);
-	uint8_t *ciphertext = malloc(chiper_size);
+	uint8_t text_len = strlen(text);
+	uint8_t cipher_size = text_len + MAC_LEN; //Calcular output size
+	uint8_t *ciphertext = malloc(cipher_size);
 
 	struct tc_aes_key_sched_struct s;
+	struct tc_ccm_mode_struct c;
 
-	if (tc_aes128_set_encrypt_key(&s, nist_key) == 0){
+	int result = TC_PASS;
+
+	result = tc_aes128_set_encrypt_key(&s, nist_key);
+	if (result == 0){
 		printf("\e[91;1mError setting the encryption key\e[0m\n");
 	}
 
-	(void)memcpy(ciphertext, counter, len_counter);
+	result = tc_ccm_config(&c, &s, nonce, nlen, MAC_LEN);
+	if (result == 0) {
+		printf("\e[91;1mError setting the CCM config\e[0m\n");
+	}
 	
 	/* Encryption phase */
-	if (tc_ctr_mode(&ciphertext[TC_AES_BLOCK_SIZE], strlen(text), (uint8_t *) text, strlen(text), counter, &s) == 0) {
+	result = tc_ccm_generation_encryption(ciphertext, cipher_size, NULL, 0, (uint8_t *) text, text_len, &c);
+	if (result == 0) {
 			printf("\e[91;1mError in the text encryption\e[0m\n");
 	}
 
 	/* Displaying */
 	printf("\e[94;1mChiper text: \e[0m");
-	for(int i=0; i < chiper_size; i++)
+	for(int i=0; i < cipher_size; i++)
 	{
 		printf("%02x", ciphertext[i]);
 	}
@@ -196,7 +207,7 @@ static void encrypts(uint8_t *counter, uint8_t len_counter)
  * @brief Decryption top function
  * 
  */
-static void decrypts(void)
+static void decrypts(uint8_t *nonce, size_t nlen)
 {
 	char *str;
 	char *key;
@@ -229,33 +240,37 @@ static void decrypts(void)
 	/* Setting decryption configs */
 	uint8_t input_len = strlen(text);
 	uint8_t cipher_len = input_len/2;
+	uint8_t text_len = cipher_len - MAC_LEN;
 
-	uint8_t data_len = cipher_len-TC_AES_BLOCK_SIZE;
-
+	uint8_t *text_out = malloc(cipher_len)+1;
 	uint8_t *ciphertext = malloc(cipher_len);
-	uint8_t *text_out = malloc(data_len);
 
-	if (get_hex_rep(text, strlen(text), ciphertext) == 0){
+	if (get_hex_rep(text, input_len, ciphertext) == 0){
 		printf("\e[91;1mError converting the ciphertext\e[0m\n");
 		return;
 	}
 
 	struct tc_aes_key_sched_struct s;
+	struct tc_ccm_mode_struct c;
 
+	int result = TC_PASS;
+	
 	if (tc_aes128_set_decrypt_key(&s, nist_key) == 0){
 		printf("\e[91;1mError setting the decryption key\e[0m\n");
 	}
 
-	uint8_t temp_counter[TC_AES_BLOCK_SIZE];
-
-	(void)memcpy(temp_counter, ciphertext, TC_AES_BLOCK_SIZE);
+	result = tc_ccm_config(&c, &s, nonce, nlen, MAC_LEN);
+	if (result == 0) {
+		printf("\e[91;1mError setting the CCM config\e[0m\n");
+	}
 	
 	/* Decryption phase */
-	if (tc_ctr_mode(text_out, data_len, &ciphertext[TC_AES_BLOCK_SIZE], data_len, &temp_counter[0], &s) == 0) {
-			printf("\e[91;1mError in the text encryption\e[0m\n");
+	result = tc_ccm_decryption_verification(text_out, text_len, NULL, 0, ciphertext, cipher_len, &c);
+	if (result == 0) {
+		printf("\e[91;1mError in the text encryption\e[0m\n");
 	}
 
-	text_out[data_len] = '\0';
+	text_out[cipher_len] = '\0';
 
 	printf("\e[94;1mText: \e[0m");
 	printf("%s\n", text_out);
@@ -279,11 +294,11 @@ static void console_service(void)
 	else if(strcmp(token, "reboot") == 0)
 		reboot_cmd();
 
-	else if(strcmp(token, "encrypt") == 0)
-		encrypts(ctr, TC_AES_BLOCK_SIZE);
-	
+	else if(strcmp(token, "encrypt") == 0){
+		encrypts(nonce, NONCE_SIZE);
+	}
 	else if(strcmp(token, "decrypt") == 0)
-		decrypts();
+		decrypts(nonce, NONCE_SIZE);
 
 	prompt();
 }
@@ -301,9 +316,9 @@ int main(void)
 	prompt();
 
 	/* Generating Counter init */
-	for(int i=0; i< TC_AES_BLOCK_SIZE; i++)
+	for(int i=0; i< NONCE_SIZE; i++)
 	{
-		ctr[i] = rand() % 255;
+		nonce[i] = rand() % 255;
 	}
 
 	while(1) {
