@@ -12,6 +12,7 @@
 #include <generated/csr.h>
 
 #include <tinycrypt/ccm_mode.h>
+#include <tinycrypt/ctr_prng.h>
 #include <tinycrypt/aes.h>
 #include <tinycrypt/constants.h>
 #include <test_utils.h>

@@ -4,6 +4,7 @@
 #define MAC_LEN 	16
 #define NONCE_SIZE  13
 uint8_t nonce[NONCE_SIZE];
+TCCtrPrng_t ctx;
 
 /*-----------------------------------------------------------------------*/
 /* Uart                                                                  */
@@ -193,6 +194,14 @@ static void encrypts(uint8_t *nonce, size_t nlen)
 	}
 
 	/* Displaying */
+	printf("\e[94;1mNonce: \e[0m");
+	for(int i=0; i < nlen; i++)
+	{
+		printf("%02x", nonce[i]);
+	}
+
+	printf("\n");
+
 	printf("\e[94;1mChiper text: \e[0m");
 	for(int i=0; i < cipher_size; i++)
 	{
@@ -207,15 +216,17 @@ static void encrypts(uint8_t *nonce, size_t nlen)
  * @brief Decryption top function
  * 
  */
-static void decrypts(uint8_t *nonce, size_t nlen)
+static void decrypts(void)
 {
 	char *str;
 	char *key;
 	char *text;
+	char *nonce;
 
 	uint8_t nist_key[TC_AES_BLOCK_SIZE];
+	uint8_t temp_nonce[NONCE_SIZE];
 	
-	/* Reading key and text for decryption */
+	/* Reading key, nonce and text for decryption */
 	printf("\e[94;1mInsert the key\e[0m> ");
 	do 
 	{
@@ -226,6 +237,20 @@ static void decrypts(uint8_t *nonce, size_t nlen)
 
 	if (get_hex_rep(key, strlen(key), &nist_key[0]) == 0){
 		printf("\e[91;1mError converting the encryption key\e[0m\n");
+		return;
+	}
+
+
+	printf("\e[94;1mInsert the nonce\e[0m> ");
+	do 
+	{
+		str = readstr();
+	}while(str == NULL);
+
+	nonce = get_token(&str);
+
+	if (get_hex_rep(nonce, strlen(nonce), &temp_nonce[0]) == 0){
+		printf("\e[91;1mError converting the nonce\e[0m\n");
 		return;
 	}
 
@@ -259,7 +284,7 @@ static void decrypts(uint8_t *nonce, size_t nlen)
 		printf("\e[91;1mError setting the decryption key\e[0m\n");
 	}
 
-	result = tc_ccm_config(&c, &s, nonce, nlen, MAC_LEN);
+	result = tc_ccm_config(&c, &s, &temp_nonce[0], NONCE_SIZE, MAC_LEN);
 	if (result == 0) {
 		printf("\e[91;1mError setting the CCM config\e[0m\n");
 	}
@@ -267,7 +292,7 @@ static void decrypts(uint8_t *nonce, size_t nlen)
 	/* Decryption phase */
 	result = tc_ccm_decryption_verification(text_out, text_len, NULL, 0, ciphertext, cipher_len, &c);
 	if (result == 0) {
-		printf("\e[91;1mError in the text encryption\e[0m\n");
+		printf("\e[91;1mError in the text decryption\e[0m\n");
 	}
 
 	text_out[cipher_len] = '\0';
@@ -295,10 +320,15 @@ static void console_service(void)
 		reboot_cmd();
 
 	else if(strcmp(token, "encrypt") == 0){
+		int result = TC_PASS;
+		result = tc_ctr_prng_generate(&ctx, NULL, 0, nonce, NONCE_SIZE);
+		if (result == 0) {
+			printf("\e[91;1mError in the Nonce generation\e[0m\n");
+		}
 		encrypts(nonce, NONCE_SIZE);
 	}
 	else if(strcmp(token, "decrypt") == 0)
-		decrypts(nonce, NONCE_SIZE);
+		decrypts();
 
 	prompt();
 }
@@ -315,10 +345,16 @@ int main(void)
 	help();
 	prompt();
 
-	/* Generating Counter init */
-	for(int i=0; i< NONCE_SIZE; i++)
-	{
-		nonce[i] = rand() % 255;
+	/* Generating nonce */
+
+	int result = TC_PASS;
+
+	uint8_t entropy[256] = {0x7f, 0x40, 0x80, 0x46, 0x93, 0x55, 0x2e, 0x31, 0x75, 0x23, 0xfd, 0xa6, 0x93, 0x5a, 0x5b, 0xc8, 0x14, 0x35, 0x3b, 0x1f
+							, 0xbb, 0x7d, 0x33, 0x49, 0x64, 0xac, 0x4d, 0x1d, 0x12, 0xdd, 0xcc, 0xce};
+
+	result = tc_ctr_prng_init(&ctx, &entropy[0], sizeof(entropy), NULL, 0);
+	if (result == 0) {
+		printf("\e[91;1mError in the PRNG init\e[0m\n");
 	}
 
 	while(1) {
