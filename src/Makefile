@@ -7,7 +7,16 @@ OBJDIR = ./obj
 EXT_LIBDIR = ../ext_lib
 MBED_LIB = $(EXT_LIBDIR)/mbedtls/library
 
-OBJECTS := $(OBJDIR)/isr.o \
+TINY_CRYPT_OBJ := $(OBJDIR)/aes_decrypt.o \
+				$(OBJDIR)/aes_encrypt.o \
+				$(OBJDIR)/ctr_mode.o \
+				$(OBJDIR)/ctr_prng.o \
+				$(OBJDIR)/ccm_mode.o \
+				$(OBJDIR)/cmac_mode.o \
+				$(OBJDIR)/utils.o 
+
+OBJECTS := $(TINY_CRYPT_OBJ) \
+		  $(OBJDIR)/isr.o \
 		  $(OBJDIR)/main.o \
 		  $(OBJDIR)/crt0.o
 
@@ -33,14 +42,18 @@ demo.elf: $(OBJECTS)
 		-N -o $@ \
 		$(OBJECTS) \
 		$(PACKAGES:%=-L$(BUILD_DIR)/software/%) \
+		-L$(EXT_LIBDIR)/tinycrypt/lib \
 		-L$(MBED_LIB) \
 		$(LIBS:lib%=-l%) \
+		-ltinycrypt \
 		-lmbedcrypto \
 		-lgcc 
 	chmod -x $@
 
-$(OBJDIR)/main.o: main.c $(MBED_LIB)/libmbedcrypto.a
+$(OBJDIR)/main.o: main.c $(MBED_LIB)/libmbedcrypto.a $(EXT_LIBDIR)/tinycrypt/lib/libtinycrypt.a
 	$(compile)
+
+	
 
 $(OBJDIR)/crt0.o: $(CPU_DIRECTORY)/crt0.S
 	$(assemble)
@@ -50,6 +63,12 @@ $(OBJDIR)/%.o: %.cpp
 
 $(OBJDIR)/%.o: %.c
 	$(compile)
+
+$(OBJDIR)/%.o: $(EXT_LIBDIR)/tinycrypt/lib/source/%.c
+	$(compile)
+
+$(EXT_LIBDIR)/tinycrypt/lib/libtinycrypt.a: $(TINY_CRYPT_OBJ)
+	$(AR) $(ARFLAGS) $@ $^
 
 $(OBJDIR)/%.o: %.S
 	$(assemble)
