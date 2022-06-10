@@ -1,10 +1,11 @@
 #include "main.h"
 
 
-#define MAC_LEN 	16
-#define NONCE_SIZE  13
-uint8_t nonce[NONCE_SIZE];
-TCCtrPrng_t ctx;
+#define MAC_LEN 	     16
+#define NONCE_SIZE  	 13
+#define KEY_SIZE_BITS    128
+#define KEY_SIZE_BYTES   16
+uint8_t nonce[NONCE_SIZE] = {0x7f, 0x40, 0x80, 0x46, 0x93, 0x55, 0x2e, 0x31, 0x75, 0x23, 0xfd, 0xa6, 0x93};
 
 /*-----------------------------------------------------------------------*/
 /* Uart                                                                  */
@@ -143,7 +144,8 @@ static void encrypts(uint8_t *nonce, size_t nlen)
 	char *key;
 	char *text;
 
-	uint8_t nist_key[TC_AES_BLOCK_SIZE];
+	uint8_t nist_key[KEY_SIZE_BYTES];
+	uint8_t tag[MAC_LEN];
 
 	/* Reading key and text for encryption */
 	printf("\e[94;1mInsert the key\e[0m> ");
@@ -154,7 +156,7 @@ static void encrypts(uint8_t *nonce, size_t nlen)
 
 	key = get_token(&str);
 
-	if (get_hex_rep(key, strlen(key), &nist_key[0]) != TC_AES_KEY_SIZE){
+	if (get_hex_rep(key, strlen(key), &nist_key[0]) != KEY_SIZE_BYTES){
 		printf("\e[91;1mError converting the encryption key\e[0m\n");
 		return;
 	}
@@ -169,27 +171,21 @@ static void encrypts(uint8_t *nonce, size_t nlen)
 
 	/* Setting encryption configs */
 	uint8_t text_len = strlen(text);
-	uint8_t cipher_size = text_len + MAC_LEN; //Calcular output size
+	uint8_t cipher_size = text_len;
 	uint8_t *ciphertext = malloc(cipher_size);
 
-	struct tc_aes_key_sched_struct s;
-	struct tc_ccm_mode_struct c;
+	mbedtls_gcm_context ctx;
 
-	int result = TC_PASS;
+	mbedtls_gcm_init(&ctx);
 
-	result = tc_aes128_set_encrypt_key(&s, nist_key);
-	if (result == 0){
+	int result = mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, nist_key, KEY_SIZE_BITS);
+	if (result == MBEDTLS_ERR_GCM_BAD_INPUT){
 		printf("\e[91;1mError setting the encryption key\e[0m\n");
-	}
-
-	result = tc_ccm_config(&c, &s, nonce, nlen, MAC_LEN);
-	if (result == 0) {
-		printf("\e[91;1mError setting the CCM config\e[0m\n");
 	}
 	
 	/* Encryption phase */
-	result = tc_ccm_generation_encryption(ciphertext, cipher_size, NULL, 0, (uint8_t *) text, text_len, &c);
-	if (result == 0) {
+	result = mbedtls_gcm_crypt_and_tag(&ctx, MBEDTLS_GCM_ENCRYPT, cipher_size, nonce, nlen, NULL, 0, (uint8_t *) text, ciphertext, MAC_LEN, &tag[0]);
+	if (result == MBEDTLS_ERR_GCM_BAD_INPUT) {
 			printf("\e[91;1mError in the text encryption\e[0m\n");
 	}
 
@@ -201,6 +197,15 @@ static void encrypts(uint8_t *nonce, size_t nlen)
 	}
 
 	printf("\n");
+
+	printf("\e[94;1mTag: \e[0m");
+	for(int i=0; i < MAC_LEN; i++)
+	{
+		printf("%02x", tag[i]);
+	}
+
+	printf("\n");
+
 
 	printf("\e[94;1mChiper text: \e[0m");
 	for(int i=0; i < cipher_size; i++)
@@ -223,7 +228,7 @@ static void decrypts(void)
 	char *text;
 	char *nonce;
 
-	uint8_t nist_key[TC_AES_BLOCK_SIZE];
+	uint8_t nist_key[KEY_SIZE_BYTES];
 	uint8_t temp_nonce[NONCE_SIZE];
 	
 	/* Reading key, nonce and text for decryption */
@@ -275,23 +280,18 @@ static void decrypts(void)
 		return;
 	}
 
-	struct tc_aes_key_sched_struct s;
-	struct tc_ccm_mode_struct c;
+	mbedtls_gcm_context ctx;
 
-	int result = TC_PASS;
-	
-	if (tc_aes128_set_decrypt_key(&s, nist_key) == 0){
+	mbedtls_gcm_init(&ctx);
+
+	int result = mbedtls_gcm_setkey(&ctx, MBEDTLS_CIPHER_ID_AES, nist_key, KEY_SIZE_BITS);
+	if (result == MBEDTLS_ERR_GCM_BAD_INPUT){
 		printf("\e[91;1mError setting the decryption key\e[0m\n");
-	}
-
-	result = tc_ccm_config(&c, &s, &temp_nonce[0], NONCE_SIZE, MAC_LEN);
-	if (result == 0) {
-		printf("\e[91;1mError setting the CCM config\e[0m\n");
 	}
 	
 	/* Decryption phase */
-	result = tc_ccm_decryption_verification(text_out, text_len, NULL, 0, ciphertext, cipher_len, &c);
-	if (result == 0) {
+	result = mbedtls_gcm_auth_decrypt(&ctx, text_len, &temp_nonce[0], NONCE_SIZE, NULL, 0, &ciphertext[0], MAC_LEN, &ciphertext[MAC_LEN], text_out);
+	if (result == MBEDTLS_ERR_GCM_BAD_INPUT) {
 		printf("\e[91;1mError in the text decryption\e[0m\n");
 	}
 
@@ -320,11 +320,6 @@ static void console_service(void)
 		reboot_cmd();
 
 	else if(strcmp(token, "encrypt") == 0){
-		int result = TC_PASS;
-		result = tc_ctr_prng_generate(&ctx, NULL, 0, nonce, NONCE_SIZE);
-		if (result == 0) {
-			printf("\e[91;1mError in the Nonce generation\e[0m\n");
-		}
 		encrypts(nonce, NONCE_SIZE);
 	}
 	else if(strcmp(token, "decrypt") == 0)
@@ -346,17 +341,6 @@ int main(void)
 	prompt();
 
 	/* Generating nonce */
-
-	int result = TC_PASS;
-
-	uint8_t entropy[256] = {0x7f, 0x40, 0x80, 0x46, 0x93, 0x55, 0x2e, 0x31, 0x75, 0x23, 0xfd, 0xa6, 0x93, 0x5a, 0x5b, 0xc8, 0x14, 0x35, 0x3b, 0x1f
-							, 0xbb, 0x7d, 0x33, 0x49, 0x64, 0xac, 0x4d, 0x1d, 0x12, 0xdd, 0xcc, 0xce};
-
-	result = tc_ctr_prng_init(&ctx, &entropy[0], sizeof(entropy), NULL, 0);
-	if (result == 0) {
-		printf("\e[91;1mError in the PRNG init\e[0m\n");
-	}
-
 	while(1) {
 		console_service();
 	}
