@@ -87,3 +87,6 @@
 [submodule "ext_lib/tinycrypt"]
 	path = ext_lib/tinycrypt
 	url = git@github.com:intel/tinycrypt.git
+[submodule "ext_lib/mbedtls"]
+	path = ext_lib/mbedtls
+	url = git@github.com:Mbed-TLS/mbedtls.git
